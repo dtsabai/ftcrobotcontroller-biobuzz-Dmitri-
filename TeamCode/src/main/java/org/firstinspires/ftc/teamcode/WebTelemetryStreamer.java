@@ -36,6 +36,8 @@ public class WebTelemetryStreamer implements Runnable {
     private final AtomicInteger nextChannelId = new AtomicInteger(0);
     private volatile boolean channelMapSent = false;
 
+    private volatile boolean running = true;
+
     @Override
     public void run() {
         try {
@@ -78,13 +80,19 @@ public class WebTelemetryStreamer implements Runnable {
     }
 
     public void stop() throws IOException {
-        this.serverSocket.close();
+        running = false;
+        if (currentClient != null) {
+            currentClient.close();
+        }
+        if (serverSocket != null) {
+            serverSocket.close();
+        }
     }
 
     private void listen(int port) throws IOException {
         this.serverSocket = new ServerSocket(port);
 
-        while (true) {
+        while (running) {
             try {
 //                while (true) {
 //                    try {
@@ -99,7 +107,7 @@ public class WebTelemetryStreamer implements Runnable {
                 messageQueue.clear();
 
                 boolean exitloop = false;
-                while (currentClient.isConnected() && !exitloop) {
+                while (running && currentClient.isConnected() && !exitloop) {
                     byte[] message;
                     boolean sentData = false;
                     while ((message = messageQueue.poll()) != null) {
@@ -124,13 +132,21 @@ public class WebTelemetryStreamer implements Runnable {
                 System.out.println("Web telemetry streamer: Client disconnected !");
                 channelMapSent = false;
             }   catch (IOException e) {
+                if (!running) break; // serverSocket closed by stop()
                 System.out.println("[wts] Client connection dropped: " + e.getMessage());
             } catch (InterruptedException e) {
-                System.out.println("[wts] InterruptedException: + " + e.getMessage());
+                System.out.println("[wts] InterruptedException: " + e.getMessage());
                 //  break; // don't exit
             } finally {
                 System.out.println("Web telemetry streamer: Client disconnected !");
                 channelMapSent = false;
+                if (currentClient != null) {
+                    try {
+                        currentClient.close();
+                    } catch (IOException e) {
+                        System.out.println("[wts] error closing client: " + e.getMessage());
+                    }
+                }
             }
         }
     }
@@ -186,6 +202,9 @@ public class WebTelemetryStreamer implements Runnable {
     }
 
     public void sendUpdateFrame() {
+        if (!channelMapSent) return; // no client connected, nothing would read the frame
+        if (messageQueue.size() > 200) return; // queue backed up, drop frame to cap memory
+
         // Get or assign channel ID
 
         // Binary format: uint16 length, int32 channel_id, double value

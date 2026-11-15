@@ -16,8 +16,8 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,6 +36,8 @@ public class WebInterface implements Runnable {
     Map<String, Double> paramterMinValues;
 
 
+    private volatile boolean running = true;
+
     Mode mode; // prevent calling addParameter after listen is called, for thread safety
 
     int port = 8081;
@@ -53,9 +55,9 @@ public class WebInterface implements Runnable {
     }
 
     WebInterface(int port) {
-        this.parameters = new HashMap<String, Double>();
-        this.paramterMaxValues = new HashMap<String, Double>();
-        this.paramterMinValues = new HashMap<String, Double>();
+        this.parameters = new ConcurrentHashMap<String, Double>();
+        this.paramterMaxValues = new ConcurrentHashMap<String, Double>();
+        this.paramterMinValues = new ConcurrentHashMap<String, Double>();
         this.mode = Mode.INITIALIZE;
         this.port = port;
     }
@@ -87,16 +89,25 @@ public class WebInterface implements Runnable {
         if (this.mode != Mode.INITIALIZE) return;
         parameters.put(key, 0.0);
         paramterMaxValues.put(key, 100.0);
+        paramterMinValues.put(key, 0.0);
     }
 
     public Double getParameter(String key) {
-        return parameters.get(key);
+        Double value = key == null ? null : parameters.get(key);
+        if (value == null) {
+            System.out.println("WebInterface: getParameter called for missing key '" + key + "', returning 0.0");
+            return 0.0;
+        }
+        return value;
     }
 
     public void stop() {
+        running = false;
         try {
             System.out.println("Stopping web interface...");
-            this.serverSocket.close(); // TODO: make this more graceful
+            if (this.serverSocket != null) {
+                this.serverSocket.close(); // TODO: make this more graceful
+            }
         } catch (IOException e) {
             System.out.print("Uh oh when stopping server (.stop()):");
             System.out.println(e.getMessage());
@@ -107,12 +118,13 @@ public class WebInterface implements Runnable {
         this.mode = Mode.LISTEN;
         this.serverSocket = new ServerSocket(port);
 
-        while (true) {
+        while (running) {
             try {
                 Socket client = this.serverSocket.accept();
                 handleConnection(client);
                 client.close();
             } catch (Exception e) {
+                if (!running) break; // socket was closed by stop(), exit quietly
                 System.out.println("WebInterface connection error " + e.getMessage());
                 e.printStackTrace(); // Helpful to see what actually happened in logcat
             }
@@ -135,6 +147,8 @@ public class WebInterface implements Runnable {
         }
 
         String[] lines = linesar.toArray(new String[0]);
+
+        if (lines.length == 0) return; // empty request, nothing to answer
 
         String requestLine = lines[0];
 
@@ -189,11 +203,25 @@ public class WebInterface implements Runnable {
                     if (split.length < 2) {
                         return "HTTP/1.1 400 Bad Request\r\n\r\n";
                     }
-                    parameters.put(split[0], Double.parseDouble(split[1]));
+                    String key = split[0];
+                    Double max = paramterMaxValues.get(key);
+                    Double min = paramterMinValues.get(key);
+                    if (!parameters.containsKey(key) || max == null || min == null) {
+                        System.out.println("Ignoring unknown parameter '" + key + "'");
+                        return "HTTP/1.1 400 Bad Request\r\n\r\n";
+                    }
+                    double value;
+                    try {
+                        value = Double.parseDouble(split[1]);
+                    } catch (NumberFormatException e) {
+                        return "HTTP/1.1 400 Bad Request\r\n\r\n";
+                    }
+                    value = Math.max(min, Math.min(max, value));
+                    parameters.put(key, value);
                     System.out.print("Set parameter ");
-                    System.out.print(split[0]);
+                    System.out.print(key);
                     System.out.print(" to ");
-                    System.out.println(Double.parseDouble(split[1]));
+                    System.out.println(value);
                     return "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\n\r\n";
                 default:
                     return "HTTP/1.1 404 Not Found\r\n\r\n";
