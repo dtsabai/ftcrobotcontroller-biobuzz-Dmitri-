@@ -68,6 +68,10 @@ public class AutoOtosDrive extends LinearOpMode {
                 backRightDrive, new PIDController(0.02, 0.001, 0.001));
         driveController.init();
 
+        xController = new PIDController(KP_OTOS, KI_OTOS, KD_OTOS);
+        yController = new PIDController(KP_OTOS, KI_OTOS, KD_OTOS);
+        hController = new PIDController(KP_OTOSH, KI_OTOSH, KD_OTOSH);
+
         telemetry.addLine("Initialized. Press play to run waypoints.");
         telemetry.update();
         waitForStart();
@@ -87,10 +91,10 @@ public class AutoOtosDrive extends LinearOpMode {
         double ty = WAYPOINTS[index][1];
         double th = WAYPOINTS[index][2];
 
-        // Fresh controllers so integral and derivative state does not carry between waypoints
-        xController = new PIDController(KP_OTOS, KI_OTOS, KD_OTOS);
-        yController = new PIDController(KP_OTOS, KI_OTOS, KD_OTOS);
-        hController = new PIDController(KP_OTOSH, KI_OTOSH, KD_OTOSH);
+        // Clear integral and derivative state so it does not carry between waypoints
+        xController.reset();
+        yController.reset();
+        hController.reset();
         xController.setTarget(tx);
         yController.setTarget(ty);
         // Heading is passed in as a wrapped error relative to the target, so the target is 0

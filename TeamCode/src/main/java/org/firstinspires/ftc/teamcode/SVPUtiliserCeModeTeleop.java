@@ -57,7 +57,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 
 import java.io.IOException;
-import java.util.Locale;
 
 import java.util.List;
 
@@ -115,6 +114,11 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
 
     MotorSpeedTracker shooterL_spt;
     MotorSpeedTracker shooterR_spt;
+
+    // Encoder ticks per motor revolution (28 for an ungeared REV HD Hex motor)
+    private static final int TICKS_PER_REV = 28;
+    // Empirical scale so velocity channels (deg/s / 6 = rpm) share a graph with the setpoints
+    private static final double VELOCITY_GRAPH_SCALE = 20;
 
     private static final boolean USE_WEBCAM = true;
     private AprilTagProcessor aprilTag;
@@ -268,10 +272,6 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
         }
     }
 
-    private double avg(double a, double b) {
-        return (a + b)/2;
-    }
-
     private double boolToDoubleBecauseItWontCast(boolean input) {
         return input ? 1.0 : 0.0;
     }
@@ -342,19 +342,18 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
 
         // send slower to stop network getting backed up (only every 3rd loop)
         if (loopcounter % 3 == 0) {
-            double horrible_coefficient = 20;
 
             webTelemetryStreamer.sendData("shooterL_current", ((DcMotorEx) shooterL).getCurrent(CurrentUnit.MILLIAMPS) / 1000);
-            webTelemetryStreamer.sendData("shooterL_speed", horrible_coefficient * ((DcMotorEx) shooterL).getVelocity(AngleUnit.DEGREES) / 6.0);
+            webTelemetryStreamer.sendData("shooterL_speed", VELOCITY_GRAPH_SCALE * ((DcMotorEx) shooterL).getVelocity(AngleUnit.DEGREES) / 6.0);
 
             webTelemetryStreamer.sendData("shooterR_current", ((DcMotorEx) shooterR).getCurrent(CurrentUnit.MILLIAMPS) / 1000);
-            webTelemetryStreamer.sendData("shooterR_speed", horrible_coefficient * ((DcMotorEx) shooterR).getVelocity(AngleUnit.DEGREES) / 6.0);
+            webTelemetryStreamer.sendData("shooterR_speed", VELOCITY_GRAPH_SCALE * ((DcMotorEx) shooterR).getVelocity(AngleUnit.DEGREES) / 6.0);
 
             webTelemetryStreamer.sendData("feeder_current", ((DcMotorEx) feeder).getCurrent(CurrentUnit.MILLIAMPS) / 1000);
-            webTelemetryStreamer.sendData("feeder_speed", horrible_coefficient * ((DcMotorEx) feeder).getVelocity(AngleUnit.DEGREES) / 6.0);
+            webTelemetryStreamer.sendData("feeder_speed", VELOCITY_GRAPH_SCALE * ((DcMotorEx) feeder).getVelocity(AngleUnit.DEGREES) / 6.0);
 
             webTelemetryStreamer.sendData("intake_current", ((DcMotorEx) intake).getCurrent(CurrentUnit.MILLIAMPS) / 1000);
-            webTelemetryStreamer.sendData("intake_speed", horrible_coefficient * ((DcMotorEx) intake).getVelocity(AngleUnit.DEGREES) / 6.0);
+            webTelemetryStreamer.sendData("intake_speed", VELOCITY_GRAPH_SCALE * ((DcMotorEx) intake).getVelocity(AngleUnit.DEGREES) / 6.0);
 
             webTelemetryStreamer.sendData("SPintake_speed", webInterface.getParameter("intake_speed"));
             webTelemetryStreamer.sendData("SPshooter_speed", webInterface.getParameter("shooter_speed"));
@@ -364,10 +363,10 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
             webTelemetryStreamer.sendData("shooterL_speed_eec", shooterL_spt.rpm());
             webTelemetryStreamer.sendData("shooterR_speed_eec", shooterR_spt.rpm());
 
-            webTelemetryStreamer.sendData("speed_backleft", horrible_coefficient * ((DcMotorEx) backLeftDrive).getVelocity(AngleUnit.DEGREES) / 6.0);
-            webTelemetryStreamer.sendData("speed_backright", horrible_coefficient * ((DcMotorEx) backRightDrive).getVelocity(AngleUnit.DEGREES) / 6.0);
-            webTelemetryStreamer.sendData("speed_frontleft", horrible_coefficient * ((DcMotorEx) frontLeftDrive).getVelocity(AngleUnit.DEGREES) / 6.0);
-            webTelemetryStreamer.sendData("speed_frontright", horrible_coefficient * ((DcMotorEx) frontRightDrive).getVelocity(AngleUnit.DEGREES) / 6.0);
+            webTelemetryStreamer.sendData("speed_backleft", VELOCITY_GRAPH_SCALE * ((DcMotorEx) backLeftDrive).getVelocity(AngleUnit.DEGREES) / 6.0);
+            webTelemetryStreamer.sendData("speed_backright", VELOCITY_GRAPH_SCALE * ((DcMotorEx) backRightDrive).getVelocity(AngleUnit.DEGREES) / 6.0);
+            webTelemetryStreamer.sendData("speed_frontleft", VELOCITY_GRAPH_SCALE * ((DcMotorEx) frontLeftDrive).getVelocity(AngleUnit.DEGREES) / 6.0);
+            webTelemetryStreamer.sendData("speed_frontright", VELOCITY_GRAPH_SCALE * ((DcMotorEx) frontRightDrive).getVelocity(AngleUnit.DEGREES) / 6.0);
 
             webTelemetryStreamer.sendUpdateFrame();
 
@@ -415,14 +414,12 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
 
         double shooter_speed = webInterface.getParameter("shooter_speed");
 
-        int hardcoded_ticks_per_revolution = 28;
-
         double reversalSignal = 1 - (2 * boolToDoubleBecauseItWontCast(gamepad1.b));
 
         ((DcMotorEx) intake).setVelocity(reversalSignal * boolToDoubleBecauseItWontCast(gamepad1.left_bumper) * webInterface.getParameter("intake_speed"));
         ((DcMotorEx) feeder).setVelocity(-reversalSignal * boolToDoubleBecauseItWontCast(gamepad1.a) * webInterface.getParameter("feeder_speed"));
 
-        double shooterSpeed = boolToDoubleBecauseItWontCast(aToggler.currentState) * shooter_speed * hardcoded_ticks_per_revolution / 60.0;
+        double shooterSpeed = boolToDoubleBecauseItWontCast(aToggler.currentState) * shooter_speed * TICKS_PER_REV / 60.0;
         ((DcMotorEx) shooterR).setVelocity(shooterSpeed);
         ((DcMotorEx) shooterL).setVelocity(shooterSpeed);
 
@@ -471,14 +468,6 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
 
         builder.addProcessor(aprilTag);
         visionPortal = builder.build();
-    }
-
-    String formatAngle(AngleUnit angleUnit, double angle) {
-        return formatDegrees(AngleUnit.DEGREES.fromUnit(angleUnit, angle));
-    }
-
-    String formatDegrees(double degrees){
-        return String.format(Locale.getDefault(), "%.1f", AngleUnit.DEGREES.normalize(degrees));
     }
 
     private double jsrc(double power) {
