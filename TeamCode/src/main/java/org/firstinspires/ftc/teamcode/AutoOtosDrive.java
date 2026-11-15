@@ -67,10 +67,15 @@ public class AutoOtosDrive extends LinearOpMode {
         driveController = new DriveController(imu, frontRightDrive, frontLeftDrive, backLeftDrive,
                 backRightDrive, new PIDController(0.02, 0.001, 0.001));
         driveController.init();
+        driveController.maxAccelPerSec = 6.0;
+        driveController.minHoldPower = 0.0; // >0 makes hold mode creep forever (see sim/README.md)
 
         xController = new PIDController(KP_OTOS, KI_OTOS, KD_OTOS);
         yController = new PIDController(KP_OTOS, KI_OTOS, KD_OTOS);
         hController = new PIDController(KP_OTOSH, KI_OTOSH, KD_OTOSH);
+        // the default PID deadband swallows small errors and leaves 1-3 in of steady-state error
+        xController.setDeadbandStuff(0.7, 0.0);
+        yController.setDeadbandStuff(0.7, 0.0);
 
         telemetry.addLine("Initialized. Press play to run waypoints.");
         telemetry.update();
@@ -125,7 +130,7 @@ public class AutoOtosDrive extends LinearOpMode {
             double ySignal = yController.loop(pose.y);
             double rotationSignal = hController.loop(AngleUnit.normalizeDegrees(pose.h - th));
 
-            driveController.driveFieldRelative(-ySignal, -xSignal, rotationSignal);
+            driveController.driveHoldFieldRelative(-ySignal, -xSignal, rotationSignal);
         }
     }
 

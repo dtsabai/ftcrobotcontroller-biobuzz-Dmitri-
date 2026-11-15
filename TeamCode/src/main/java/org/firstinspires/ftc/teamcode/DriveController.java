@@ -13,6 +13,18 @@ public class DriveController {
     // driving flat out) and set it just under that. 2000 is a conservative placeholder.
     static final double MAX_TICKS_PER_SEC = 2000.0;
 
+    // Minimum wheel power (0..1) used only by driveHold(): below this the wheels stall on friction.
+    double minHoldPower = 0.0;
+
+    // Max change in wheel power per second (0 = disabled). Limits wheel slip on big step inputs.
+    double maxAccelPerSec = 0.0;
+
+    // Time source in nanoseconds; replaceable so the slew limit can be tested in simulation.
+    java.util.function.LongSupplier clock = System::nanoTime;
+
+    private final double[] lastWheelPower = new double[4];
+    private long lastDriveNanos = 0;
+
     public PIDController drivingPID;// = new PIDController(1.0, 0.1, 0.3); // meh pid
 
     DcMotor frontLeftDrive;
@@ -125,6 +137,31 @@ public class DriveController {
         drive(newForward, newRight, rotate);
     }
 
+    // Like driveFieldRelative(), but boosts a small non-zero command up to minHoldPower so the robot
+    // keeps creeping into the target instead of stalling on friction. Used by position-hold code.
+    public void driveHoldFieldRelative(double forward, double right, double rotate) {
+        double mag = Math.max(Math.hypot(forward, right), Math.abs(rotate));
+        if (mag > 1e-6 && mag < minHoldPower) {
+            double k = minHoldPower / mag;
+            forward *= k;
+            right *= k;
+            rotate *= k;
+        }
+        driveFieldRelative(forward, right, rotate);
+    }
+
+    // Moves a wheel power toward its target by at most maxAccelPerSec * dt.
+    private double slew(int i, double target, double dt) {
+        if (maxAccelPerSec <= 0 || dt <= 0) {
+            lastWheelPower[i] = target;
+            return target;
+        }
+        double step = maxAccelPerSec * dt;
+        double p = lastWheelPower[i] + Math.max(-step, Math.min(step, target - lastWheelPower[i]));
+        lastWheelPower[i] = p;
+        return p;
+    }
+
     // Thanks to FTC16072 for sharing this code!!
     public void drive(double forward, double right, double rotate) {
         // This calculates the power needed for each wheel based on the amount of forward,
@@ -149,9 +186,18 @@ public class DriveController {
         // scaled by maxPower (>= 1.0) so no wheel exceeds 100% and the ratios stay correct.
         // maxSpeed can be lowered for outreaches.
         // Motors are kept in RUN_USING_ENCODER (set in init()), so no mode switching is needed here.
-        ((DcMotorEx) frontLeftDrive).setVelocity(MAX_TICKS_PER_SEC * maxSpeed * (frontLeftPower / maxPower));
-        ((DcMotorEx) frontRightDrive).setVelocity(MAX_TICKS_PER_SEC * maxSpeed * (frontRightPower / maxPower));
-        ((DcMotorEx) backLeftDrive).setVelocity(MAX_TICKS_PER_SEC * maxSpeed * (backLeftPower / maxPower));
-        ((DcMotorEx) backRightDrive).setVelocity(MAX_TICKS_PER_SEC * maxSpeed * (backRightPower / maxPower));
+        long now = clock.getAsLong();
+        double dt = lastDriveNanos == 0 ? 0 : Math.min((now - lastDriveNanos) / 1e9, 0.1);
+        lastDriveNanos = now;
+
+        double fl = slew(0, frontLeftPower / maxPower, dt);
+        double fr = slew(1, frontRightPower / maxPower, dt);
+        double bl = slew(2, backLeftPower / maxPower, dt);
+        double br = slew(3, backRightPower / maxPower, dt);
+
+        ((DcMotorEx) frontLeftDrive).setVelocity(MAX_TICKS_PER_SEC * maxSpeed * fl);
+        ((DcMotorEx) frontRightDrive).setVelocity(MAX_TICKS_PER_SEC * maxSpeed * fr);
+        ((DcMotorEx) backLeftDrive).setVelocity(MAX_TICKS_PER_SEC * maxSpeed * bl);
+        ((DcMotorEx) backRightDrive).setVelocity(MAX_TICKS_PER_SEC * maxSpeed * br);
     }
 }

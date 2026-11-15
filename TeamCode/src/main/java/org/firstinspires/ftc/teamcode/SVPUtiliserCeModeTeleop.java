@@ -205,6 +205,9 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
         otosXController = new PIDController(0.0, 0.0, 0.0);
         otosYController = new PIDController(0.0, 0.0, 0.0);
         otosRotationController = new PIDController(0.0, 0.0, 0.0);
+        // the default PID deadband swallows small errors and leaves 1-3 in of steady-state error
+        otosXController.setDeadbandStuff(0.7, 0.0);
+        otosYController.setDeadbandStuff(0.7, 0.0);
 
 
         apriltagRotationController = new PIDController(0.0, 0.0, 0.0);
@@ -389,6 +392,10 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
         }
         lastX = gamepad1.x;
 
+        // hold mode: limit wheel acceleration and keep a minimum creep power; joystick stays instant
+        driveController.maxAccelPerSec = gamepad1.x ? 6.0 : 0.0;
+        driveController.minHoldPower = 0.0; // >0 makes hold mode creep forever (see sim/README.md)
+
         if (gamepad1.x) {
             telemetry.addLine("otosTest");
 
@@ -401,7 +408,7 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
             double ySignal = otosYController.loop(otos0Pos.y);
             double rotationSignal = otosRotationController.loop(otos0Pos.h);
 
-            driveController.driveFieldRelative(-ySignal, -xSignal, rotationSignal);
+            driveController.driveHoldFieldRelative(-ySignal, -xSignal, rotationSignal);
         } else {
             driveController.driveFieldRelative(jsrc(gamepad1.left_stick_y), -jsrc(gamepad1.left_stick_x), -jsrc(gamepad1.right_stick_x));
         }
