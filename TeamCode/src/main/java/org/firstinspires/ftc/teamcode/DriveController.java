@@ -1,15 +1,17 @@
 package org.firstinspires.ftc.teamcode;
 
-import com.qualcomm.hardware.lynx.commands.core.LynxSetMotorPIDFControlLoopCoefficientsCommand;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.IMU;
-import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
 
 public class DriveController {
+
+    // TODO: measure this on the robot (max ticks/sec at full power, e.g. read getVelocity() while
+    // driving flat out) and set it just under that. 2000 is a conservative placeholder.
+    static final double MAX_TICKS_PER_SEC = 2000.0;
 
     public PIDController drivingPID;// = new PIDController(1.0, 0.1, 0.3); // meh pid
 
@@ -56,25 +58,6 @@ public class DriveController {
         frontRightDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         backLeftDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         backRightDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-
-//        ((DcMotorEx) frontLeftDrive).setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, new PIDFCoefficients());
-
-        PIDFCoefficients currentCoefs = ((DcMotorEx) frontLeftDrive).getPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION);
-        System.out.println(currentCoefs.toString());
-
-
-        // original:
-        //PIDFCoefficients coefs = new PIDFCoefficients(10.000000, 0.049988, 0.000000, 0.000000, LynxSetMotorPIDFControlLoopCoefficientsCommand.InternalMotorControlAlgorithm.LegacyPID.toExternal());
-
-        PIDFCoefficients coefs = new PIDFCoefficients(10.000000, 0.049988, 0.020000, 0.000000, LynxSetMotorPIDFControlLoopCoefficientsCommand.InternalMotorControlAlgorithm.LegacyPID.toExternal());
-
-
-        ((DcMotorEx) frontLeftDrive).setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, coefs);
-        ((DcMotorEx) frontRightDrive).setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, coefs);
-        ((DcMotorEx) backLeftDrive).setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, coefs);
-        ((DcMotorEx) backRightDrive).setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, coefs);
-
-
     }
 
     void stop() {
@@ -162,24 +145,13 @@ public class DriveController {
         maxPower = Math.max(maxPower, Math.abs(backRightPower));
         maxPower = Math.max(maxPower, Math.abs(backLeftPower));
 
-        // We multiply by maxSpeed so that it can be set lower for outreaches
-        // When a young child is driving the robot, we may not want to allow full
-        // speed.
-        double coef = 900.0; // todo: set this to the swyft motor's maximum speed
-
-        frontLeftDrive.setPower(1.0);
-        frontRightDrive.setPower(1.0);
-        backLeftDrive.setPower(1.0);
-        backRightDrive.setPower(1.0);
-
-        frontLeftDrive.setTargetPosition(frontLeftDrive.getCurrentPosition() + (int) (coef * maxSpeed * (frontLeftPower / maxPower)));
-        frontRightDrive.setTargetPosition(frontRightDrive.getCurrentPosition() + (int) (coef * maxSpeed * (frontRightPower / maxPower)));
-        backLeftDrive.setTargetPosition(backLeftDrive.getCurrentPosition() + (int) (coef * maxSpeed * (backLeftPower / maxPower)));
-        backRightDrive.setTargetPosition(backRightDrive.getCurrentPosition() + (int) (coef * maxSpeed * (backRightPower / maxPower)));
-
-        frontLeftDrive.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        frontRightDrive.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        backLeftDrive.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        backRightDrive.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        // Velocity control: each wheel runs at a fraction of MAX_TICKS_PER_SEC. Wheel powers are
+        // scaled by maxPower (>= 1.0) so no wheel exceeds 100% and the ratios stay correct.
+        // maxSpeed can be lowered for outreaches.
+        // Motors are kept in RUN_USING_ENCODER (set in init()), so no mode switching is needed here.
+        ((DcMotorEx) frontLeftDrive).setVelocity(MAX_TICKS_PER_SEC * maxSpeed * (frontLeftPower / maxPower));
+        ((DcMotorEx) frontRightDrive).setVelocity(MAX_TICKS_PER_SEC * maxSpeed * (frontRightPower / maxPower));
+        ((DcMotorEx) backLeftDrive).setVelocity(MAX_TICKS_PER_SEC * maxSpeed * (backLeftPower / maxPower));
+        ((DcMotorEx) backRightDrive).setVelocity(MAX_TICKS_PER_SEC * maxSpeed * (backRightPower / maxPower));
     }
 }

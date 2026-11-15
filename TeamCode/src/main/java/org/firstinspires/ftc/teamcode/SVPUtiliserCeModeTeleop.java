@@ -279,7 +279,7 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
     public void loop2(int loopcounter) {
         telemetry.addLine("Left stick: move (field-relative)");
         telemetry.addLine("Right stick X: rotate");
-        telemetry.addLine("Right stick Y: turret");
+        telemetry.addLine("Gamepad 2 right stick Y: turret");
         telemetry.addLine("Left bumper: intake");
         telemetry.addLine("A: feeder");
         telemetry.addLine("B: reverse");
@@ -337,7 +337,7 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
         telemetry.addData("FPS: ", visionPortal.getFps());
 
         // turret
-        double a = (double) (webInterface.getParameter("turretAngleRange") * gamepad1.right_stick_y);
+        double a = (double) (webInterface.getParameter("turretAngleRange") * gamepad2.right_stick_y);
         turret0.setPosition((a + 1) / 2);
 
         // send slower to stop network getting backed up (only every 3rd loop)
