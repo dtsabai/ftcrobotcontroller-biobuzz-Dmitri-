@@ -28,13 +28,13 @@
  */
 package org.firstinspires.ftc.teamcode;
 
+import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.hardware.rev.Rev9AxisImu;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 
@@ -47,20 +47,11 @@ import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
-import org.firstinspires.ftc.vision.apriltag.AprilTagSingleDetection;
 import com.qualcomm.robotcore.hardware.IMU;
 
 import com.qualcomm.robotcore.hardware.Servo;
 
-
 import com.qualcomm.hardware.sparkfun.SparkFunOTOS;
-
-//import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDirection;
-//import org.firstinspires.ftc.robotcore.external.hardware.camera.Camera;
-//import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
-//import org.firstinspires.ftc.robotcore.external.matrices.VectorF;
-
-
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -95,18 +86,14 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
 
     DcMotor shooterL;
 
-
     DcMotor intake;
 
     DcMotor feeder;
 
     DcMotor shooterR;
 
-//    Rev9AxisImu imu;
-
+    // This declares the IMU needed to get the current direction the robot is facing
     IMU imu;
-
-//    Orientation angles;
 
     SparkFunOTOS.Pose2D otos0Pos;
 
@@ -114,21 +101,11 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
 
     WebInterface webInterface;
 
-    boolean shooterToggle = false;
-    boolean lastGamepadX = false;
-
     Toggler aToggler = new Toggler();
-    Toggler yToggler = new Toggler();
-
 
     DriveController driveController;
 
-    double yawZero;
-
     SparkFunOTOS myOtos;
-
-    // This declares the IMU needed to get the current direction the robot is facing
-//    IMU imu;
 
     PIDController otosXController;
     PIDController otosYController;
@@ -143,14 +120,23 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
     private AprilTagProcessor aprilTag;
     private VisionPortal visionPortal;
 
-    boolean doingOtosTest = false;
-
     Servo turret0;
+
+    // last shooter PIDF values pushed to the motors (NaN until the first push)
+    private double lastKpShooter = Double.NaN;
+    private double lastKiShooter = Double.NaN;
+    private double lastKdShooter = Double.NaN;
+    private double lastKfShooter = Double.NaN;
+
+    // gamepad1.x state from the previous loop, used for rising-edge detection
+    private boolean lastX = false;
 
     @Override
     public void runOpMode() {
-//        Rev9AxisImu.Parameters parameters = new Rev9AxisImu.Parameters(new Rev9AxisImuOrientationOnRobot(Rev9AxisImuOrientationOnRobot.LogoFacingDirection.UP, Rev9AxisImuOrientationOnRobot.I2cPortFacingDirection.BACKWARD));
-//        imu = hardwareMap.get(Rev9AxisImu.class, "external_imu");
+        // let each REV hub cache bulk reads instead of issuing one transaction per device
+        for (LynxModule hub : hardwareMap.getAll(LynxModule.class)) {
+            hub.setBulkCachingMode(LynxModule.BulkCachingMode.AUTO);
+        }
 
         Rev9AxisImu.Parameters parameters = new Rev9AxisImu.Parameters(new RevHubOrientationOnRobot(RevHubOrientationOnRobot.LogoFacingDirection.BACKWARD, RevHubOrientationOnRobot.UsbFacingDirection.UP));
         imu = hardwareMap.get(IMU.class, "imu"); // internal IMU
@@ -190,8 +176,6 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
         webTelemetryStreamerThread.start(); // start server
 
         webInterface = new WebInterface(8885);
-        // webInterface.addParameter("shooter_power", 0.6);
-        // webInterface.addParameter("feeder_power", 0.6); //0.4
 
         webInterface.addParameter("shooter_speed", 1850, 5000);
         webInterface.addParameter("feeder_speed", 2500, 4000);
@@ -232,40 +216,18 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
         webInterface.addParameter("Ki_otosh", 0.00001, 1);
         webInterface.addParameter("Kd_otosh", 0.009, 1);
 
-//        webInterface.addParameter("Kp_otos", 0.01, 1);
-//        webInterface.addParameter("Ki_otos", 0.0, 1);
-//        webInterface.addParameter("Kd_otos", 0.0, 1);
-//
-//        webInterface.addParameter("Kp_otosh", 0.001, 1);
-//        webInterface.addParameter("Ki_otosh", 0.0, 1);
-//        webInterface.addParameter("Kd_otosh", 0.0, 1);
-
-
         webInterface.addParameter("Kp_aprilh", 0.0007, 1);
         webInterface.addParameter("Ki_aprilh", 0.000002, 1);
         webInterface.addParameter("Kd_aprilh", 0.004, 1);
 
-        //
         webInterface.addParameter("turretAngleRange", 0.49, 1);
-//        webInterface.addParameter("turretAngleRange", 200, 2000, 0);
-
-
-//        webInterface.addParameter("dbsizec", 0.3);
-//        webInterface.addParameter("dbdepthc", 0.3);
 
         Thread webInterfaceThread = new Thread(webInterface);
         webInterfaceThread.start(); // start server
 
-//        SoundPlayer soundPlayer = new SoundPlayer(1, 4096);
-//        soundPlayer.play()
-//        SoundPlayer.getInstance().startPlaying();
-
-
-
         intake.setDirection(DcMotor.Direction.FORWARD);
         intake.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
-//        feeder.setDirection(DcMotor.Direction.REVERSE);
         feeder.setDirection(DcMotor.Direction.FORWARD);
         feeder.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
@@ -274,69 +236,36 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
         shooterL.setDirection(DcMotor.Direction.REVERSE);
         shooterL.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
-        /*
-        // We set the left motors in reverse which is needed for drive trains where the left
-        // motors are opposite to the right ones.
-        backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
-        frontLeftDrive.setDirection(DcMotor.Direction.REVERSE);
+        initAprilTag();
 
-        // This uses RUN_USING_ENCODER to be more accurate.   If you don't have the encoder
-        // wires, you should remove these
-        frontLeftDrive.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        frontRightDrive.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        backLeftDrive.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        backRightDrive.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-
-        frontLeftDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        frontRightDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        backLeftDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        backRightDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        */
-
-
-
-//        imu = hardwareMap.get(IMU.class, "imu");
-        // This needs to be changed to match the orientation on your robot
-        RevHubOrientationOnRobot.LogoFacingDirection logoDirection =
-                RevHubOrientationOnRobot.LogoFacingDirection.RIGHT;
-        RevHubOrientationOnRobot.UsbFacingDirection usbDirection =
-                RevHubOrientationOnRobot.UsbFacingDirection.FORWARD;
-
-//        RevHubOrientationOnRobot orientationOnRobot = new
-//                RevHubOrientationOnRobot(logoDirection, usbDirection);
-//        imu.initialize(new IMU.Parameters(orientationOnRobot));
-
+        driveController = new DriveController(imu, frontRightDrive, frontLeftDrive, backLeftDrive, backRightDrive, new PIDController(0.02, 0.001, 0.001));
+        driveController.init();
 
         waitForStart();
 
-        driveController = new DriveController(imu, frontRightDrive, frontLeftDrive, backLeftDrive, backRightDrive, new PIDController(0.02, 0.001, 0.001));//new PIDController(0.0, 0.0, 0.0));
-        driveController.init();
-
-//        angles = imu.getRobotOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES);
-
-
-
         otos0Pos = myOtos.getPosition();
-
-        // imu is reset so this is 0
-//        driveController.yawZero = 0.0 - angles.firstAngle;
-//        yawZero = 0.0 - angles.firstAngle;
-
-        initAprilTag();
 
         // i hate this
         aToggler.currentState = true;
-
-        int loopcounter = 0;
-        while (opModeIsActive()) {
-            loop2(loopcounter++);
-        }
-
-        webInterface.stop();
+        // NOTE: shooter starts ON at Start; set to false for a safer default
 
         try {
-            webTelemetryStreamer.stop();
-        } catch (IOException e) {}
+            int loopcounter = 0;
+            while (opModeIsActive()) {
+                loop2(loopcounter++);
+            }
+        } finally {
+            // release ports even if the loop throws
+            webInterface.stop();
+
+            try {
+                webTelemetryStreamer.stop();
+            } catch (IOException e) {}
+
+            if (visionPortal != null) {
+                visionPortal.close();
+            }
+        }
     }
 
     private double avg(double a, double b) {
@@ -348,17 +277,21 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
     }
 
     public void loop2(int loopcounter) {
-        telemetry.addLine("Press A to reset Yaw");
-        telemetry.addLine("Hold left bumper to drive in robot relative");
-        telemetry.addLine("The left joystick sets the robot direction");
-        telemetry.addLine("Moving the right joystick left and right turns the robot");
-
-//        boolean doingOtosTest = gamepad1.back;
-
+        telemetry.addLine("Left stick: move (field-relative)");
+        telemetry.addLine("Right stick X: rotate");
+        telemetry.addLine("Right stick Y: turret");
+        telemetry.addLine("Left bumper: intake");
+        telemetry.addLine("A: feeder");
+        telemetry.addLine("B: reverse");
+        telemetry.addLine("Back: toggle shooter");
+        telemetry.addLine("X: hold position at origin (OTOS)");
+        telemetry.addLine("D-pad up: zero heading");
+        telemetry.addLine("D-pad down: reset OTOS");
 
         // dpad down to reset otos
         if (gamepad1.dpad_down) {
             myOtos.resetTracking();
+            driveController.yawZero = 0.0;
         }
 
         otos0Pos = myOtos.getPosition();
@@ -370,137 +303,45 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
         driveController.setMeasuredYaw(otos0Pos.h);
 
 
-//        doingOtosTest = doingOtosTest ^ gamepad1.backWasPressed();
-
-//        if (gamepad1.leftBumperWasPressed()) {
-//            doingOtosTest = true;
-//        }
-//        if (gamepad1.leftBumperWasReleased()) {
-//            doingOtosTest = false;
-//        }
-
         driveController.drivingPID.setCoefs(
                 webInterface.getParameter("Kp_drive"),
                 webInterface.getParameter("Ki_drive"),
                 webInterface.getParameter("Kd_drive")
         );
 
-//        driveController.drivingPID.deadbandSizeCoef = webInterface.getParameter("dbsizec");
-//        driveController.drivingPID.deadbandDepthCoef = webInterface.getParameter("dbdepthc");
+        // only push shooter PIDF to the motors when one of the web parameters changed
+        double kpShooter = webInterface.getParameter("Kp_shooter");
+        double kiShooter = webInterface.getParameter("Ki_shooter");
+        double kdShooter = webInterface.getParameter("Kd_shooter");
+        double kfShooter = webInterface.getParameter("Kf_shooter");
+        if (kpShooter != lastKpShooter || kiShooter != lastKiShooter
+                || kdShooter != lastKdShooter || kfShooter != lastKfShooter) {
+            ((DcMotorEx) shooterL).setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER,
+                    new PIDFCoefficients(kpShooter, kiShooter, kdShooter, kfShooter)
+            );
 
-//        driveController.drivingPID.setDeadbandStuff(webInterface.getParameter("dbsizec"), webInterface.getParameter("dbdepthc"));
+            ((DcMotorEx) shooterR).setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER,
+                    new PIDFCoefficients(kpShooter, kiShooter, kdShooter, kfShooter)
+            );
 
-        ((DcMotorEx) shooterL).setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER,
-                new PIDFCoefficients(
-                        webInterface.getParameter("Kp_shooter"),
-                        webInterface.getParameter("Ki_shooter"),
-                        webInterface.getParameter("Kd_shooter"),
-                        webInterface.getParameter("Kf_shooter")
-                )
-        );
-
-        ((DcMotorEx) shooterR).setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER,
-                new PIDFCoefficients(
-                        webInterface.getParameter("Kp_shooter"),
-                        webInterface.getParameter("Ki_shooter"),
-                        webInterface.getParameter("Kd_shooter"),
-                        webInterface.getParameter("Kf_shooter")
-                )
-        );
-
-//        System.out.print("hashfuaehwoigfheraoiwghioe: ");
-//        System.out.println(webInterface.getParameter("Kp_drive"));
-//        System.out.println(driveController.drivingPID.Kp);
-//        System.out.println(driveController.drivingPID.Ki);
-//        System.out.println(driveController.drivingPID.Kd);
-
-
-//        angles = imu.getRobotOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES);
+            lastKpShooter = kpShooter;
+            lastKiShooter = kiShooter;
+            lastKdShooter = kdShooter;
+            lastKfShooter = kfShooter;
+        }
 
         telemetry.addData("connection", imu.getConnectionInfo());
-
-        // wrong labels
-//        telemetry.addData("heading", formatAngle(angles.angleUnit, angles.firstAngle));
-//        telemetry.addData("roll", formatAngle(angles.angleUnit, angles.secondAngle));
-//        telemetry.addData("pitch", formatAngle(angles.angleUnit, angles.thirdAngle));
-
-
-
-//        SparkFunOTOS.Pose2D otosPos = myOtos.getPosition();
-
-
-//        for (AprilTagDetection detection : currentDetections) {
-//            if (detection.metadata != null) {
-//                telemetry.addLine(String.format("\n==== (ID %d) %s", detection.id, detection.metadata.name));
-//                telemetry.addLine(String.format("XYZ %6.1f %6.1f %6.1f  (inch)", detection.ftcPose.x, detection.ftcPose.y, detection.ftcPose.z));
-//                telemetry.addLine(String.format("PRY %6.1f %6.1f %6.1f  (deg)", detection.ftcPose.pitch, detection.ftcPose.roll, detection.ftcPose.yaw));
-//                telemetry.addLine(String.format("RBE %6.1f %6.1f %6.1f  (inch, deg, deg)", detection.ftcPose.range, detection.ftcPose.bearing, detection.ftcPose.elevation));
-//            }
-//        }
-
 
         List<AprilTagDetection> currentDetections = aprilTag.getDetections();
         telemetry.addData("# AprilTags Detected", currentDetections.size());
         telemetry.addData("FPS: ", visionPortal.getFps());
 
+        // turret
+        double a = (double) (webInterface.getParameter("turretAngleRange") * gamepad1.right_stick_y);
+        turret0.setPosition((a + 1) / 2);
 
-
-//        if (gamepad1.right_bumper) {
-//            telemetry.addLine("apriltag");
-//
-//            AprilTagSingleDetection detection = currentDetections.stream()
-//                    .filter(d -> d instanceof AprilTagSingleDetection)
-//                    .map(d -> (AprilTagSingleDetection) d)
-//                    .filter(d -> d.id == 30) // id 32
-//                    .findFirst()
-//                    .orElse(null);
-//
-//            if (detection != null) {
-//                    apriltagRotationController.setTarget(300); // 300 pixels
-//
-//                    double rotationSignal = apriltagRotationController.loop(detection.center.y);
-//                    double npos = turret0.getPosition() + rotationSignal;
-//
-//                    double mx = webInterface.getParameter("turretAngleRange") * 0.5;
-//                    if (npos > mx) {
-//                        npos = mx;
-//                    }
-//                    if (npos < -mx) {
-//                        npos = -mx;
-//                    }
-//
-//                    turret0.setPosition(npos);
-//            }
-//        } else {
-        if (true) {
-            // turret
-            double a = (double) (webInterface.getParameter("turretAngleRange") * gamepad1.right_stick_y);
-            turret0.setPosition((a + 1) / 2);
-        }
-
-
-//        for (AprilTagDetection detection : currentDetections) {
-//            if (detection.metadata != null && detection.ftcPose != null) {
-//                telemetry.addLine(String.format("\n==== (ID %d) %s", detection.id, detection.metadata.name));
-//                telemetry.addLine(String.format("XYZ %6.1f %6.1f %6.1f  (inch)", detection.ftcPose.x, detection.ftcPose.y, detection.ftcPose.z));
-//                telemetry.addLine(String.format("PRY %6.1f %6.1f %6.1f  (deg)", detection.ftcPose.pitch, detection.ftcPose.roll, detection.ftcPose.yaw));
-//                telemetry.addLine(String.format("RBE %6.1f %6.1f %6.1f  (inch, deg, deg)", detection.ftcPose.range, detection.ftcPose.bearing, detection.ftcPose.elevation));
-//            } else {
-//                telemetry.addLine(String.format("\n==== (ID %d) Unknown", detection.id));
-//                telemetry.addLine(String.format("Center %6.0f %6.0f   (pixels)", detection.center.x, detection.center.y));
-//            }
-//        }
-
-        // send slower to stop network getting backed up (maybe it would help if I don't flush data inside of sendData - oh wait I'm already doing that)
-        if (true) {
-//        if (loopcounter % 2 == 0) {
-//            if (currentDetections.size() > 0) {
-//                AprilTagDetection detection = currentDetections.get(0);
-//                webTelemetryStreamer.sendData("xa", detection.ftcPose.x);
-//                webTelemetryStreamer.sendData("ya", detection.ftcPose.y);
-//                webTelemetryStreamer.sendData("za", detection.ftcPose.z);
-//            }
-
+        // send slower to stop network getting backed up (only every 3rd loop)
+        if (loopcounter % 3 == 0) {
             double horrible_coefficient = 20;
 
             webTelemetryStreamer.sendData("shooterL_current", ((DcMotorEx) shooterL).getCurrent(CurrentUnit.MILLIAMPS) / 1000);
@@ -528,50 +369,7 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
             webTelemetryStreamer.sendData("speed_frontleft", horrible_coefficient * ((DcMotorEx) frontLeftDrive).getVelocity(AngleUnit.DEGREES) / 6.0);
             webTelemetryStreamer.sendData("speed_frontright", horrible_coefficient * ((DcMotorEx) frontRightDrive).getVelocity(AngleUnit.DEGREES) / 6.0);
 
-
-
-
-
-            //            webTelemetryStreamer.sendData("voltage", voltageSensor.getVoltage());
-
-//            webTelemetryStreamer.sendData("backspin_current", shooterR.getCurrent(CurrentUnit.MILLIAMPS) / 1000);
-//            webTelemetryStreamer.sendData("backspin_speed", horrible_coefficient * intake.getVelocity(AngleUnit.DEGREES) / 6.0);
-
-//            webTelemetryStreamer.sendData("rpm_i", rpm);
-//            webTelemetryStreamer.sendData("ratio_i", ratio);
-//            webTelemetryStreamer.sendData("rpm_back_i", rpm * ratio);
-
             webTelemetryStreamer.sendUpdateFrame();
-
-
-//            webTelemetryStreamer.sendData("heading", angles.firstAngle);
-//            webTelemetryStreamer.sendData("roll", angles.secondAngle);
-//            webTelemetryStreamer.sendData("pitch", angles.thirdAngle);
-//
-//            webTelemetryStreamer.sendData("PIDTarget", (180/3.14159) * driveController.drivingPID.target);
-//            webTelemetryStreamer.sendData("PIDOutput", driveController.drivingPID.output);
-//
-//            webTelemetryStreamer.sendData("x", gamepad1.left_stick_x * 100.0);
-//            webTelemetryStreamer.sendData("y", gamepad1.left_stick_y * 100.0);
-//            webTelemetryStreamer.sendData("theta", gamepad1.right_stick_x * 100.0);
-//
-//            webTelemetryStreamer.sendData("current_frontLeftDrive", ((DcMotorEx) frontLeftDrive).getCurrent(CurrentUnit.MILLIAMPS));
-//            webTelemetryStreamer.sendData("current_frontRightDrive", ((DcMotorEx) frontRightDrive).getCurrent(CurrentUnit.MILLIAMPS));
-//            webTelemetryStreamer.sendData("current_backLeftDrive", ((DcMotorEx) backLeftDrive).getCurrent(CurrentUnit.MILLIAMPS));
-//            webTelemetryStreamer.sendData("current_backRightDrive", ((DcMotorEx) backRightDrive).getCurrent(CurrentUnit.MILLIAMPS));
-
-//            webTelemetryStreamer.sendData("speed_shooter", -((DcMotorEx) shooterL).getVelocity(AngleUnit.DEGREES));
-//
-//            webTelemetryStreamer.sendData("speed_intake", -((DcMotorEx) intake).getVelocity(AngleUnit.DEGREES));
-//            webTelemetryStreamer.sendData("speed_feeder", -((DcMotorEx) feeder).getVelocity(AngleUnit.DEGREES));
-//            webTelemetryStreamer.sendData("speed_feeder2", ((DcMotorEx) shooterR).getVelocity(AngleUnit.DEGREES));
-//
-//
-//            webTelemetryStreamer.sendData("current_shooter", ((DcMotorEx) shooterL).getCurrent(CurrentUnit.MILLIAMPS));
-//            webTelemetryStreamer.sendData("current_intake", ((DcMotorEx) intake).getCurrent(CurrentUnit.MILLIAMPS));
-//            webTelemetryStreamer.sendData("current_feeder", ((DcMotorEx) feeder).getCurrent(CurrentUnit.MILLIAMPS));
-//            webTelemetryStreamer.sendData("current_feeder2", ((DcMotorEx) shooterR).getCurrent(CurrentUnit.MILLIAMPS));
-
 
             webTelemetryStreamer.sendData("otos0_x", otos0Pos.x);
             webTelemetryStreamer.sendData("otos0_y", otos0Pos.y);
@@ -584,15 +382,13 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
             }
         }
 
-        // TODO: make opmode just to test every motors' current draw individually under no load
-
-        double invert_all_emergency = ((Math.min((gamepad1.left_bumper ? 1 : 0) + (gamepad2.left_bumper ? 1 : 0), 1.0)) * 2 - 1);
-
-        // If you press the A button, then you reset the Yaw to be zero from the way
-        // the robot is currently pointing
-//        if (gamepad1.y) {
-//            imu.resetYaw();
-//        }
+        // reset OTOS position PIDs on the rising edge of X so they start clean
+        if (gamepad1.x && !lastX) {
+            otosXController.reset();
+            otosYController.reset();
+            otosRotationController.reset();
+        }
+        lastX = gamepad1.x;
 
         if (gamepad1.x) {
             telemetry.addLine("otosTest");
@@ -606,89 +402,22 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
             double ySignal = otosYController.loop(otos0Pos.y);
             double rotationSignal = otosRotationController.loop(otos0Pos.h);
 
-//            webTelemetryStreamer.sendData("xSignal", xSignal);
-//            webTelemetryStreamer.sendData("ySignal", ySignal);
-//            webTelemetryStreamer.sendData("rotationSignal", rotationSignal);
-
             driveController.driveFieldRelative(-ySignal, -xSignal, rotationSignal);
         } else {
             driveController.driveFieldRelative(jsrc(gamepad1.left_stick_y), -jsrc(gamepad1.left_stick_x), -jsrc(gamepad1.right_stick_x));
-//            driveController.drive(jsrc(gamepad1.left_stick_y), -jsrc(gamepad1.left_stick_x), -jsrc(gamepad1.right_stick_x));
         }
-
-        yToggler.update(gamepad1.y);
-
-
-        // for testing turret
-//        if (yToggler.currentState) {
-//            frontLeftDrive.setTargetPosition((int) (webInterface.getParameter("turretAngleRange") * gamepad1.right_stick_y));
-//            frontLeftDrive.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-//            telemetry.addLine("turret something");
-//        }
-
-        /*
-        if (!doingOtosTest) {
-            if (!gamepad1.right_bumper && false) {
-                // working:
-                driveController.driveFieldRelative(jsrc(gamepad1.left_stick_y), jsrc(gamepad1.left_stick_x), jsrc(gamepad1.right_stick_x));
-                // should attempt to correct for unintentional rotation
-                //            driveController.driveFieldRelativeAuto(jsrc(gamepad1.left_stick_y), jsrc(gamepad1.left_stick_x), jsrc(gamepad1.right_stick_x));
-            } else {
-//                telemetry.addLine("RIGHT BUMPER");
-//                drive(gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x);
-
-                // doingApriltagRotationTest
-                telemetry.addLine("apriltag");
-
-//                AprilTagDetection detection = currentDetections.stream()
-//                        .filter(d -> d.id == 32) // id 32
-//                        .findFirst()
-//                        .orElse(null);
-
-//                if (detection != null) {
-//                    apriltagRotationController.setTarget(300); // 300 pixels
-//
-//                    double rotationSignal = apriltagRotationController.loop(detection.center.x);
-
-//                    driveController.driveFieldRelative(jsrc(gamepad1.left_stick_y), jsrc(gamepad1.left_stick_x), rotationSignal + jsrc(gamepad1.right_stick_x));
-//                } else {
-                    driveController.driveFieldRelative(jsrc(gamepad1.left_stick_y), jsrc(gamepad1.left_stick_x), jsrc(gamepad1.right_stick_x));
-//                }
-            }
-        }*/
-
-//        if (gamepad1.x && !lastGamepadX) {
-//            shooterToggle = !shooterToggle;
-//        }
 
         if (gamepad1.dpad_up) {
             driveController.yawZero = otos0Pos.h;
         }
 
-//        lastGamepadX = gamepad1.x;
-
-
-//        aToggler.update(gamepad1.a);
         aToggler.update(gamepad1.back);
-//        bToggler.update(gamepad1.left_bumper);
-
-
-
-
-
-        // double shooterPowerCoef = webInterface.getParameter("shooter_power"); // 0.80;
-        // double upperWheelPower = webInterface.getParameter("feeder_power");  // 0.3
-        double restPowerLevel = 1.9; // 1.9
-
 
         double shooter_speed = webInterface.getParameter("shooter_speed");
-
 
         int hardcoded_ticks_per_revolution = 28;
 
         double reversalSignal = 1 - (2 * boolToDoubleBecauseItWontCast(gamepad1.b));
-
-        // y apirltag thign
 
         ((DcMotorEx) intake).setVelocity(reversalSignal * boolToDoubleBecauseItWontCast(gamepad1.left_bumper) * webInterface.getParameter("intake_speed"));
         ((DcMotorEx) feeder).setVelocity(-reversalSignal * boolToDoubleBecauseItWontCast(gamepad1.a) * webInterface.getParameter("feeder_speed"));
@@ -697,7 +426,6 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
         ((DcMotorEx) shooterR).setVelocity(shooterSpeed);
         ((DcMotorEx) shooterL).setVelocity(shooterSpeed);
 
-        
         otosXController.setCoefs(
                 webInterface.getParameter("Kp_otos"),
                 webInterface.getParameter("Ki_otos"),
@@ -722,45 +450,12 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
                 webInterface.getParameter("Kd_aprilh")
         );
 
-        // OTOS position PID test:
-//        if (doingOtosTest) {
-//            telemetry.addLine("otosTest");
-//
-//            otosXController.setTarget(2);
-//            otosYController.setTarget(3);
-//            otosRotationController.setTarget(0);
-//
-//            double xSignal = otosXController.loop(otosPos.x);
-//            double ySignal = otosYController.loop(otosPos.y);
-//            double rotationSignal = -otosRotationController.loop(otosPos.h);
-//
-//            webTelemetryStreamer.sendData("xSignal", xSignal);
-//            webTelemetryStreamer.sendData("ySignal", ySignal);
-//            webTelemetryStreamer.sendData("rotationSignal", rotationSignal);
-//
-//            driveController.driveFieldRelative(xSignal, ySignal, rotationSignal);
-//        }
-
-
-        // telemetry.addData("shooter_power", webInterface.getParameter("shooter_power"));
-
-//        gamepad2.resetEdgeDetection();
-        gamepad1.resetEdgeDetection(); // used to toggle otos test thing
+        gamepad1.resetEdgeDetection();
         telemetry.update();
     }
 
     private void initAprilTag() {
-//        AprilTagLibrary.Builder myLibraryBuilder = new AprilTagLibrary.Builder();
-//        myLibraryBuilder.addTag(21, "21", 6.5, DistanceUnit.INCH);
-//        myLibraryBuilder.addTag(24, "24", 6.5, DistanceUnit.INCH);
-//        myLibraryBuilder.addTag(11, "11", 6.5, DistanceUnit.INCH);
-//        myLibraryBuilder.addTag(19, "21", 6.5, DistanceUnit.INCH);
-//        myLibraryBuilder.addTag(20, "24", 6.5, DistanceUnit.INCH);
-//
-//        AprilTagLibrary myCustomLibrary = myLibraryBuilder.build();
-//        aprilTag = new AprilTagProcessor.Builder().setTagLibrary(myCustomLibrary).build();
-
-        AprilTagProcessor aprilTag = new AprilTagProcessor.Builder()
+        aprilTag = new AprilTagProcessor.Builder()
                 .setTagLibrary(
                         AprilTagGameDatabase.getBioBuzzTagLibrary()
                 )
@@ -787,11 +482,6 @@ public class SVPUtiliserCeModeTeleop extends LinearOpMode {
     }
 
     private double jsrc(double power) {
-//        double a = 3.7;
-//        double b = 0.43;
-//        double a = 3.33;
-//        double b = 0.35;
-
         double a = 5.1;
         double b = 0.25;
 
