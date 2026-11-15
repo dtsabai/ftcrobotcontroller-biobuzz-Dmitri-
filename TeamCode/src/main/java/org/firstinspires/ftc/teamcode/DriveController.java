@@ -1,16 +1,12 @@
 package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.hardware.lynx.commands.core.LynxSetMotorPIDFControlLoopCoefficientsCommand;
-import com.qualcomm.hardware.rev.Rev9AxisImu;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
-import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
 import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
 
 public class DriveController {
@@ -76,7 +72,7 @@ public class DriveController {
         ((DcMotorEx) frontLeftDrive).setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, coefs);
         ((DcMotorEx) frontRightDrive).setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, coefs);
         ((DcMotorEx) backLeftDrive).setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, coefs);
-        ((DcMotorEx) backLeftDrive).setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, coefs);
+        ((DcMotorEx) backRightDrive).setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, coefs);
 
 
     }
@@ -130,7 +126,7 @@ public class DriveController {
         // TODO: Continuousalize this, or use quaternion maybe, because I think wrapping around is causing the issue that only appears half the time
 //        angles = this.imu.getRobotOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES);
 
-        double yaw_corrected = ((((this.measuredYaw) - this.yawZero) + 180.0)) % 360.0 + 180.0;
+        double yaw_corrected = ((((this.measuredYaw) - this.yawZero) + 180.0)) % 360.0 - 180.0;
 
 //        double currentError = AngleUnit.normalizeRadians(rotate - yaw_corrected * (Math.PI/180));
 //        drivingPID.setTarget(0);
@@ -175,13 +171,6 @@ public class DriveController {
         frontRightDrive.setPower(1.0);
         backLeftDrive.setPower(1.0);
         backRightDrive.setPower(1.0);
-
-        int euc = (int) (coef * maxSpeed * (frontLeftPower / maxPower));
-//        System.out.print("test: ");
-//        System.out.println(euc);
-//        System.out.println(frontLeftPower);
-//        System.out.println(forward);
-
 
         frontLeftDrive.setTargetPosition(frontLeftDrive.getCurrentPosition() + (int) (coef * maxSpeed * (frontLeftPower / maxPower)));
         frontRightDrive.setTargetPosition(frontRightDrive.getCurrentPosition() + (int) (coef * maxSpeed * (frontRightPower / maxPower)));
